@@ -1,9 +1,29 @@
+#include <windows.h>
+#include <stdint.h>
 #include <stdio.h>
+
+
+uint64_t globalPerfCounterFrequency;
+
+inline float Win32GetSecondsElapsed(uint64_t start, uint64_t End)
+{
+	float result = 0;
+	result = (float)(End - start) / (float)globalPerfCounterFrequency;
+	return result;
+}
+
+inline uint64_t Win32GetPerfCounter()
+{
+	LARGE_INTEGER result;
+	QueryPerformanceCounter(&result);
+	return result.QuadPart;
+}
 
 int main()
 {
 	printf("euler integration\n");
-
+	
+	
 	/*
 	 ***** Explicit Euler *****
 	 * 
@@ -46,10 +66,41 @@ int main()
     // ---- Time Configuration ----
     double t = 0.0;             // Start time (seconds)
     double dt = 0.01;           // Time step size (seconds)
-    double t_max = 5.0;         // Total simulation time (seconds)
+    double t_max = 1000.0;         // Total simulation time (seconds)
 
-    // ---- Simulation Loop ----
+	bool sleepIsGranular = (timeBeginPeriod(1) == TIMERR_NOERROR);
+    
+	float targetSecondsPerFrame = 1.0f / 100.0f;
+
+	LARGE_INTEGER counterPerSecond;
+	QueryPerformanceFrequency(&counterPerSecond);
+	globalPerfCounterFrequency = counterPerSecond.QuadPart;
+
+	uint64_t lastCounter = Win32GetPerfCounter();
+
+	printf("\n\n\n\n");
+
+	char str[150];
+	// ---- Simulation Loop ----
     while (t <= t_max) {
+		
+		str[0] = '|';
+		str[1] = 'o';
+		
+		int full_spring = 1000 + x;
+		int normalized = (full_spring / 2000.0) * 100;
+		for (int i = 2; i < 100; i++) 
+		{
+			if(i == 99)
+				str[99] = '\0';
+			else if(i >= normalized)
+				str[i] = ' ';
+			else
+				str[i] = '-';
+		}
+		printf("\r%s", str);
+		//printf("t = %f\tx = %f\tv = %f\n", t, x, v);
+
         // 1. Calculate physical forces acting on the mass
         double spring_force = -k * x;
         double damping_force = -c * v;
@@ -64,8 +115,38 @@ int main()
 
         // 4. Advance time
         t += dt;
+
+		// Lock the frame rate
+		float secondsElapsed = Win32GetSecondsElapsed(lastCounter, Win32GetPerfCounter());
+		if(secondsElapsed < targetSecondsPerFrame) {
+			if(sleepIsGranular) {
+				DWORD sleepMS = (DWORD)(1000 * (targetSecondsPerFrame - secondsElapsed));
+				if(sleepMS > 5.0) 
+				{
+					Sleep(sleepMS - 4.0);
+				}
+			}
+			
+			// spin lock for remaining time
+			while(secondsElapsed < targetSecondsPerFrame) 
+			{
+				secondsElapsed = Win32GetSecondsElapsed(lastCounter, Win32GetPerfCounter());
+			}
+		} 
+		else 
+		{
+			// We missed a frame
+		}
+
+		uint64_t endCounter = Win32GetPerfCounter();
+
+		int64_t CounterElapsed = endCounter - lastCounter;
+		//MSPerFrame = 1000.0f * (float)CounterElapsed / (float)counterPerSecond.QuadPart;
+
+		lastCounter = endCounter;
     }
-	
+
+	timeEndPeriod(1);
 	
 return 0; 
 }
